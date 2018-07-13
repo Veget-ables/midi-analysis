@@ -1,10 +1,7 @@
 package main;
 
 import javax.sound.midi.*;
-import java.io.File;
-import java.io.IOException;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.io.*;
 
 /**
  * @see Sequence    "https://docs.oracle.com/javase/jp/6/api/javax/sound/midi/Sequence.html"
@@ -13,26 +10,63 @@ import java.util.Map;
  */
 
 public class MidiAnalysis {
+    private static final String MIDI_PATH = "c:\\Users\\Sample\\IdeaProjects\\MidConverter\\res\\";
+
     public static void main(String[] args) throws InvalidMidiDataException, IOException {
-        String filePath = System.getenv("MIDI_FILE_PATH");
-        Sequence sequence = MidiSystem.getSequence(new File(filePath));
-        Track track = sequence.getTracks()[0];
-        printMidiEvents(track);
+        Sequence sequence = MidiSystem.getSequence(new File(MIDI_PATH + "sample.MID"));
+
+        // 1. 編集前のMIDIデータをtxtファイルに出力
+        outputMidiSequence(sequence, MIDI_PATH + "sample_before.txt");
+
+        // 2. 例: sequenceからstatusCode:144のeventを取り除く
+        removeEvent(sequence, 144);
+
+        // 3. 編集後のMIDIデータをtxtファイルに出力
+        outputMidiSequence(sequence, MIDI_PATH + "sample_after.txt");
+
+        // 4. 編集後のMIDIデータをMIDファイルに出力
+        MidiSystem.write(sequence, 0, new File(MIDI_PATH + "sample_out.MID"));
     }
 
-    private static void printMidiEvents(Track track) {
-        Map<String, Object> midiMap = new LinkedHashMap<>();
-        for (int i = 0; i < track.size(); i++) {
-            MidiEvent event      = track.get(i);
-            long midiTime        = event.getTick();      // イベントのタイムスタンプ, MIDIティック単位
-            MidiMessage message  = event.getMessage();
-            int messageStatus    = message.getStatus();  // MIDIメッセージのステータスバイト
-            long messageLength   = message.getLength();  // MIDIメッセージのデータ長
-            byte[] messageData   = message.getMessage(); // MIDIメッセージデータ(ステータスバイト + データバイト)
+    /**
+     * sequenceから対象のstatusCodeを持つeventを取り除く
+     * @param sequence
+     * @param statusCode 除外対象のstatusCode
+     */
+    private static void removeEvent(Sequence sequence, int statusCode){
+        Track track = sequence.getTracks()[0];
 
-            midiMap.put("TimeStamp", midiTime);
-            midiMap.put("Status", messageStatus);
-            midiMap.put("Length", messageLength);
+        int index = 0;
+        while (track.size() != index) {
+            MidiEvent event = track.get(index);
+            MidiMessage message = event.getMessage();
+            int messageStatus = message.getStatus();
+            if (messageStatus == statusCode) {
+                track.remove(event);
+            } else {
+                index++;
+            }
+        }
+    }
+
+    /**
+     * 現在のsequenceの状態を外部ファイルに書き出す
+     * @param sequence
+     * @param fileName
+     * @throws IOException
+     */
+    private static void outputMidiSequence(Sequence sequence, String fileName) throws IOException {
+        File file = new File(fileName);
+        PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(file)));
+
+        Track track = sequence.getTracks()[0];         // Sequenceから一つだけ存在するTrackを取得
+        for (int i = 0; i < track.size(); i++) {
+            MidiEvent event = track.get(i);
+            long midiTime = event.getTick();           // イベントのタイムスタンプ, MIDIティック単位
+            MidiMessage message = event.getMessage();
+            int messageStatus = message.getStatus();   // MIDIメッセージのステータスバイト
+            long messageLength = message.getLength();  // MIDIメッセージのデータ長
+            byte[] messageData = message.getMessage(); // MIDIメッセージデータ(ステータスバイト + データバイト)
 
             String messages = "";
             for (byte b : messageData) {
@@ -40,10 +74,14 @@ public class MidiAnalysis {
                 messages += Byte.toUnsignedInt(b) + ",";
             }
             messages = messages.substring(0, messages.length() - 1);
-            midiMap.put("messages", messages);
 
-            System.out.println(midiMap);
-            midiMap.clear();
+            String eventData = "TimeStamp:" + midiTime + "," +
+                    "Status:" + messageStatus + "," +
+                    "Length:" + messageLength + "," +
+                    "messages:" + messages;
+
+            pw.println(eventData);
         }
+        pw.close();
     }
 }
